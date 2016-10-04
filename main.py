@@ -4,6 +4,7 @@ import argparse
 import logging
 import json
 from time import gmtime, strftime
+from slack_api import SlackIncomingWebhookAPI
 
 try:
     import httplib
@@ -13,11 +14,9 @@ except ImportError:
 parser = argparse.ArgumentParser(description='studentuniverse flight search',add_help=True)
 parser.add_argument('-s', '--source', type=str, default="BOS", help='Airport code of departure city', required=False)
 parser.add_argument('-d', '--destination', type=str, default="BLR", help='Airport code of destination city', required=False)
-
 parser.add_argument('-f', action="store_true", default=False, help='Turn on flexible dates')
-
 parser.add_argument('-D', action="store_true", default=False, help='Turn on debugging')
-parser.add_argument('--version', action='version', version='%(prog)s 1.0')
+parser.add_argument('--version', action='version', version='%(prog)s 1.1')
 
 required_args = parser.add_argument_group('Required named arguments')
 required_args.add_argument('-l', '--leave', type=str, help='Departure date in format YYYY-MM-DD', required=True)
@@ -32,7 +31,8 @@ requested_return_date = results.returndate
 flexibility_flag = results.f
 debug_flag = results.D
 NUMBER_OF_CHEAPEST_DEALS = 5
-SLACK_NOTIFICATION = True
+SLACK_NOTIFICATION_FLAG = False
+KEY_VALUE_PRINT_FORMAT = "{0:15}{1}"
 
 class StudentUniverse(object):
     """Base class for constructing a studentuniverse flight search query
@@ -83,8 +83,6 @@ class StudentUniverse(object):
     def get_flight_carriers(flight_segments):
         carriers = [flight['carrierCode'] for flight in flight_segments]
         return carriers
-        # for flight in flight_segments:
-        #     carriers.append(flight['carrierCode'])
 
     @staticmethod
     def read_airline_codes():
@@ -186,56 +184,29 @@ class StudentUniverse(object):
 
     def get_cheap_flight_details(self):
         # These are the cheapest details for the FIXED DATE and not the flexible dates
-        fixed_date_flight_data={}
-        fixed_date_flight_data['onward_departure_date'] = self.flight_itineraries[0]['legs'][0]['departureTime']
-        fixed_date_flight_data['onward_arrival_date'] = self.flight_itineraries[0]['legs'][0]['arrivalTime']
 
-        fixed_date_flight_data['return_departure_date'] = self.flight_itineraries[0]['legs'][1]['departureTime']
-        fixed_date_flight_data['return_arrival_date'] = self.flight_itineraries[0]['legs'][1]['arrivalTime']
-
-        fixed_date_flight_data['onward_journey_time'] = self.get_human_readable_duration(self.flight_itineraries[0]['legs'][0]['duration'])
-        fixed_date_flight_data['return_journey_time'] = self.get_human_readable_duration(self.flight_itineraries[0]['legs'][1]['duration'])
-        fixed_date_flight_data['onward_carriers'] = self.get_flight_carriers(self.flight_itineraries[0]['legs'][0]['flightSegments'])
-        fixed_date_flight_data['return_carriers'] = self.get_flight_carriers(self.flight_itineraries[0]['legs'][1]['flightSegments'])
+        fixed_date_flight_data = {
+            'onward_departure_date': self.flight_itineraries[0]['legs'][0]['departureTime'],
+            'onward_arrival_date': self.flight_itineraries[0]['legs'][0]['arrivalTime'],
+            'return_departure_date': self.flight_itineraries[0]['legs'][1]['departureTime'],
+            'return_arrival_date': self.flight_itineraries[0]['legs'][1]['arrivalTime'],
+            'onward_journey_time': self.get_human_readable_duration(self.flight_itineraries[0]['legs'][0]['duration']),
+            'return_journey_time': self.get_human_readable_duration(self.flight_itineraries[0]['legs'][1]['duration']),
+            'onward_carriers': self.get_flight_carriers(self.flight_itineraries[0]['legs'][0]['flightSegments']),
+            'return_carriers': self.get_flight_carriers(self.flight_itineraries[0]['legs'][1]['flightSegments'])
+        }
         return fixed_date_flight_data
 
-    def get_flexible_results(self):
-        global slack_data
+    def get_flexible_results(self, su_data):
         cheapest_flight_deals = sorted(self.flight_lowfares,key=lambda x:x['total'])[:NUMBER_OF_CHEAPEST_DEALS]
-        slack_data.append("Top "+str(NUMBER_OF_CHEAPEST_DEALS)+" cheapest deals if you are flexible with dates:")
-        print "Top "+str(NUMBER_OF_CHEAPEST_DEALS)+" cheapest deals if you are flexible with dates:"
-        print "---------------------------------------------"
-        slack_data.append("---------------------------------------------")
+        su_data.append("Top " + str(NUMBER_OF_CHEAPEST_DEALS) + " cheapest deals if you are flexible with dates:")
+        su_data.append("---------------------------------------------")
         for deal in cheapest_flight_deals:
-            slack_data.append("Price:       "+"$"+str(deal['total']))
-            slack_data.append("Departure:   "+str(deal['dates']['outbound'][:10]))
-            slack_data.append("Return:      "+str(deal['dates']['inbound'][:10]))
-            slack_data.append("---------------------------------------------")
-            print "Price:       "+"$"+str(deal['total'])
-            print "Departure:   "+str(deal['dates']['outbound'][:10])
-            print "Return:      "+str(deal['dates']['inbound'][:10])
-            print "---------------------------------------------"
+            su_data.append(KEY_VALUE_PRINT_FORMAT.format("Price:","$"+str(deal['total'])))
+            su_data.append(KEY_VALUE_PRINT_FORMAT.format("Departure:",str(deal['dates']['outbound'][:10])))
+            su_data.append(KEY_VALUE_PRINT_FORMAT.format("Return:", str(deal['dates']['inbound'][:10])))
+            su_data.append("---------------------------------------------")
 
-def send_slack_notification():
-    #   SLACK notifications enabled, use incoming webhooks to post messages to slack channel
-    #   NOTE:
-    #   Ideally there should be a separate class that takes care of all this
-    #   Got a quiz to study now,so later!
-    payload_text = "\n".join(slack_data)
-    payload_json = {'username': '<INSERT_BOTNAME>',
-                    'text': payload_text,
-                    'channel': '#<INSERT_CHANNEL_NAME>'}
-    payload_for_slack = json.dumps(payload_json)
-    slack_url = "<INSERT_YOUR_INCOMING_WEBHOOK_URL>"
-    slack_response = requests.post(slack_url, data=payload_for_slack)
-    if slack_response.status_code == 200:
-        print "Successfully posted a message to slack channel"
-    else:
-        print "There was some problem with posting message on slack channel"
-        print "Sorry about that.."
-        print "Investigation ON"
-
-slack_data = []
 if __name__ == "__main__":
     su_result = StudentUniverse(requested_source_airport,
                                 requested_destination_airport,
@@ -245,47 +216,34 @@ if __name__ == "__main__":
                                 debug_flag)
     su_result.search_cheapest_flight()
     if su_result.flight_search_response_code == 200:
+        su_data = []
         if flexibility_flag:
             # User is requesting flexible date flights, show them results
-            su_result.get_flexible_results()
-
-        print "---------------------------------------------------------"
-        print "Cheapest flight price of selected date: "+su_result.get_flight_fixed_date()
+            su_result.get_flexible_results(su_data)
         fixed_date_flight = su_result.get_cheap_flight_details()
-        print "---------------------------------------------------------"
-        print "Onward journey :-"
-        print "Departure:   " + fixed_date_flight['onward_departure_date']
-        print "Arrival:     " + fixed_date_flight['onward_arrival_date']
-        print "---------------------------------------------------------"
-        print "Return journey :-"
-        print "Departure:   " + fixed_date_flight['return_departure_date']
-        print "Arrival:     " + fixed_date_flight['return_arrival_date']
-        print "---------------------------------------------------------"
-        print "Onward time: " + fixed_date_flight['onward_journey_time']
-        print "Return time: " + fixed_date_flight['return_journey_time']
         onward_carriers = [su_result.airline_codes[airlinecode] for airlinecode in fixed_date_flight['onward_carriers']]
         return_carriers = [su_result.airline_codes[airlinecode] for airlinecode in fixed_date_flight['return_carriers']]
-        print "Onward Carriers: " + str(onward_carriers)
-        print "Return Carriers: " + str(return_carriers)
 
-        slack_data.append(" ")
-        slack_data.append("Cheapest flight price of selected date: "+su_result.get_flight_fixed_date())
-        slack_data.append("---------------------------------------------------------")
-        slack_data.append("Onward journey :-")
-        slack_data.append("Departure:   " + fixed_date_flight['onward_departure_date'])
-        slack_data.append("Arrival:     " + fixed_date_flight['onward_arrival_date'])
-        slack_data.append("---------------------------------------------------------")
-        slack_data.append("Return journey :-")
-        slack_data.append("Departure:   " + fixed_date_flight['return_departure_date'])
-        slack_data.append("Arrival:     " + fixed_date_flight['return_arrival_date'])
-        slack_data.append("---------------------------------------------------------")
-        slack_data.append("Onward time: " + fixed_date_flight['onward_journey_time'])
-        slack_data.append("Return time: " + fixed_date_flight['return_journey_time'])
-        slack_data.append("Onward Carriers: " + str(onward_carriers))
-        slack_data.append("Return Carriers: " + str(return_carriers))
+        su_data.append(" ")
+        su_data.append("Cheapest flight price of selected date: " + su_result.get_flight_fixed_date())
+        su_data.append("---------------------------------------------------------")
+        su_data.append("Onward journey :-")
+        su_data.append(KEY_VALUE_PRINT_FORMAT.format("Departure:", fixed_date_flight['onward_departure_date']))
+        su_data.append(KEY_VALUE_PRINT_FORMAT.format("Arrival:", fixed_date_flight['onward_arrival_date']))
+        su_data.append("---------------------------------------------------------")
+        su_data.append("Return journey :-")
+        su_data.append(KEY_VALUE_PRINT_FORMAT.format("Departure:", fixed_date_flight['return_departure_date']))
+        su_data.append(KEY_VALUE_PRINT_FORMAT.format("Arrival:", fixed_date_flight['return_arrival_date']))
+        su_data.append("---------------------------------------------------------")
+        su_data.append(KEY_VALUE_PRINT_FORMAT.format("Onward time:", fixed_date_flight['onward_journey_time']))
+        su_data.append(KEY_VALUE_PRINT_FORMAT.format("Return time:", fixed_date_flight['return_journey_time']))
+        su_data.append(KEY_VALUE_PRINT_FORMAT.format("Onward Carriers:", str(onward_carriers)))
+        su_data.append(KEY_VALUE_PRINT_FORMAT.format("Return Carriers:", str(return_carriers)))
 
-        if SLACK_NOTIFICATION:
-            send_slack_notification()
+        print "\n".join(su_data)
+        if SLACK_NOTIFICATION_FLAG:
+            slack_push_object = SlackIncomingWebhookAPI()
+            slack_push_object.push_to_slack_channel(su_data)
     else:
         print "Unable to fetch response"
         print "Response code: "+str(su_result.flight_search_response_code)
