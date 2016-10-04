@@ -18,7 +18,8 @@ parser.add_argument('-d', '--destination', type=str, default="BLR", help='Airpor
 parser.add_argument('-f', action="store_true", default=False, help='Turn on flexible dates')
 parser.add_argument('-D', action="store_true", default=False, help='Turn on debugging')
 parser.add_argument('-j', action="store_true", default=False, help='Run as cron job on openshift server')
-parser.add_argument('--version', action='version', version='%(prog)s 1.1')
+parser.add_argument('-t', '--trigger', type=str, default="1500", help='Trigger price for slack notifications', required=False)
+parser.add_argument('--version', action='version', version='%(prog)s 1.2')
 
 required_args = parser.add_argument_group('Required named arguments')
 required_args.add_argument('-l', '--leave', type=str, help='Departure date in format YYYY-MM-DD', required=True)
@@ -36,6 +37,7 @@ NUMBER_OF_CHEAPEST_DEALS = 5
 SLACK_NOTIFICATION_FLAG = False
 KEY_VALUE_PRINT_FORMAT = "{0:15}{1}"
 SERVER_CRONJOB = results.j
+TRIGGER_PRICE = int(results.trigger)
 
 if SERVER_CRONJOB:
     logfile = os.environ['OPENSHIFT_PHP_LOG_DIR']+"su.log"
@@ -188,7 +190,7 @@ class StudentUniverse(object):
 
     def get_flight_fixed_date(self):
         # This is the cheapest for the FIXED DATE and not the flexible dates
-        return "$"+str(self.flight_summary_info['cheapestItinerary']['price'])
+        return self.flight_summary_info['cheapestItinerary']['price']
 
     def get_cheap_flight_details(self):
         # These are the cheapest details for the FIXED DATE and not the flexible dates
@@ -233,7 +235,7 @@ if __name__ == "__main__":
         return_carriers = [su_result.airline_codes[airlinecode] for airlinecode in fixed_date_flight['return_carriers']]
 
         su_data.append(" ")
-        su_data.append("Cheapest flight price of selected date: " + su_result.get_flight_fixed_date())
+        su_data.append("Cheapest flight price of selected date: $" + str(su_result.get_flight_fixed_date()))
         su_data.append("---------------------------------------------------------")
         su_data.append("Onward journey :-")
         su_data.append(KEY_VALUE_PRINT_FORMAT.format("Departure:", fixed_date_flight['onward_departure_date']))
@@ -249,7 +251,8 @@ if __name__ == "__main__":
         su_data.append(KEY_VALUE_PRINT_FORMAT.format("Return Carriers:", str(return_carriers)))
 
         # print "\n".join(su_data)
-        if SLACK_NOTIFICATION_FLAG:
+        if ((su_result.get_flight_fixed_date() < TRIGGER_PRICE)
+            and SLACK_NOTIFICATION_FLAG):
             slack_push_object = SlackIncomingWebhookAPI()
             slack_push_object.push_to_slack_channel(su_data)
     else:
