@@ -3,6 +3,7 @@ import requests
 import argparse
 import logging
 import json
+import os
 from time import gmtime, strftime
 from slack_api import SlackIncomingWebhookAPI
 
@@ -16,6 +17,7 @@ parser.add_argument('-s', '--source', type=str, default="BOS", help='Airport cod
 parser.add_argument('-d', '--destination', type=str, default="BLR", help='Airport code of destination city', required=False)
 parser.add_argument('-f', action="store_true", default=False, help='Turn on flexible dates')
 parser.add_argument('-D', action="store_true", default=False, help='Turn on debugging')
+parser.add_argument('-j', action="store_true", default=False, help='Run as cron job on openshift server')
 parser.add_argument('--version', action='version', version='%(prog)s 1.1')
 
 required_args = parser.add_argument_group('Required named arguments')
@@ -33,6 +35,12 @@ debug_flag = results.D
 NUMBER_OF_CHEAPEST_DEALS = 5
 SLACK_NOTIFICATION_FLAG = False
 KEY_VALUE_PRINT_FORMAT = "{0:15}{1}"
+SERVER_CRONJOB = results.j
+
+if SERVER_CRONJOB:
+    logfile = os.environ['OPENSHIFT_PHP_LOG_DIR']+"su.log"
+    logging.basicConfig(level=logging.DEBUG, filename=logfile, filemode="a+",
+                            format="%(asctime)-15s %(levelname)-8s %(message)s")
 
 class StudentUniverse(object):
     """Base class for constructing a studentuniverse flight search query
@@ -240,12 +248,16 @@ if __name__ == "__main__":
         su_data.append(KEY_VALUE_PRINT_FORMAT.format("Onward Carriers:", str(onward_carriers)))
         su_data.append(KEY_VALUE_PRINT_FORMAT.format("Return Carriers:", str(return_carriers)))
 
-        print "\n".join(su_data)
+        # print "\n".join(su_data)
         if SLACK_NOTIFICATION_FLAG:
             slack_push_object = SlackIncomingWebhookAPI()
             slack_push_object.push_to_slack_channel(su_data)
     else:
-        print "Unable to fetch response"
-        print "Response code: "+str(su_result.flight_search_response_code)
+        if SERVER_CRONJOB:
+            logging.error("Unable to fetch response")
+            logging.error("Response code: "+str(su_result.flight_search_response_code))
+        else:
+            print "Unable to fetch response"
+            print "Response code: "+str(su_result.flight_search_response_code)
         exit(1)
     exit(0)
