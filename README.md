@@ -37,6 +37,7 @@ On setting a trigger price, the user can turn on notifications on a slack channe
 
 #### Settings for Slack
 Before turning on slack notifications, following settings need to be done:
+
 slack_api.py:
 ```python 
     slack_bot_name = "<INSERT_BOTNAME>"
