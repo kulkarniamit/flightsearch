@@ -7,7 +7,7 @@ class SlackIncomingWebhookAPI():
     incoming webhooks for a given channel
     """
     slack_bot_name = "<INSERT_BOTNAME>"
-    slack_channel_name = "#<INSERT_CHANNEL_NAME>'"
+    slack_channel_name = "#<INSERT_CHANNEL_NAME>"
     slack_incoming_webhook = "<INSERT_YOUR_INCOMING_WEBHOOK_URL>"
 
     def __init__(self):
