@@ -38,16 +38,23 @@ On setting a trigger price, the user can turn on notifications on a slack channe
 #### Settings for Slack
 Before turning on slack notifications, following settings need to be done:
 
-slack_api.py:
-```python 
+1. [Install requests module](http://docs.python-requests.org/en/master/user/install/ "Link to install requests")
+
+2. Insert slack parameters of your channel
+   
+   slack_api.py:
+   ```python 
     slack_bot_name = "<INSERT_BOTNAME>"
     slack_channel_name = "#<INSERT_CHANNEL_NAME>'"
     slack_incoming_webhook = "<INSERT_YOUR_INCOMING_WEBHOOK_URL>"
-```
-main.py
-```python
-SLACK_NOTIFICATION_FLAG = True
-```
+    ```
+
+3. Enable Slack Notifications
+   
+   main.py:
+   ```python
+   SLACK_NOTIFICATION_FLAG = True
+   ```
 
 #### Slack notifications
 To enable hourly notifications, create a cronjob with the required parameters 
